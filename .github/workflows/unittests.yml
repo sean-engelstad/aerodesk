@@ -70,6 +70,7 @@ jobs:
 
       - name: Install Aerodesk
         run: |
+          pip install numpy
           pip install -e .
       - name: Run unit tests
         run: |
@@ -77,9 +78,9 @@ jobs:
       #- name: Build docs
       # This allows the user to ssh into the github runner and debug a job upon failure
       # This will only trigger if the job was run using workflow_dispatch and debug_enabled input flag was set to true
-      - name: Setup interactive debug session on failure
-        if: ${{ failure() && github.event.inputs.debug_enabled }}
-        uses: mxschmitt/action-tmate@v3
+      # - name: Setup interactive debug session on failure
+      #   if: ${{ failure() && github.event.inputs.debug_enabled }}
+      #   uses: mxschmitt/action-tmate@v3
         # To access the terminal through the web-interface:
         #   1. Click on the web-browser link printed out in this action from the github workkflow terminal
         #   2. Press cntrl + c in the new tab that opens up to reveal the terminal
