@@ -71,6 +71,7 @@ jobs:
       - name: Install Aerodesk
         run: |
           pip install numpy
+          pip install testflo
           pip install -e .
       - name: Run unit tests
         run: |
