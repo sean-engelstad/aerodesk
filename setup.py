@@ -2,9 +2,9 @@ import os
 from subprocess import check_output
 import sys
 
-# Numpy/mpi4py must be installed prior to installing TACS
+# Numpy/mpi4py must be installed prior to installing aerodesk
 import numpy
-import mpi4py
+#import mpi4py
 
 # Import distutils
 from setuptools import setup, find_packages
