@@ -1,19 +1,20 @@
-__all__ = ["GmresSolver"]
+__all__ = ["Gmres"]
 
 import numpy as np
 
 
-class GmresSolver:
+class Gmres:
     """
     Solves linear systems of the form Ax = b using the GMRES Algorithm
     GMRES stands for Generalized Minimal Residual
     """
 
-    def __init__(self, A, b, maxiter=None, x0=None, tol=1e-10):
+    def __init__(self, A, b, maxiter=None, x0=None, tol=1e-10, debug=False):
         self.A = A
         self.b = b
         self.x0 = x0 if x0 is not None else b
         self.tol = tol
+        self.debug = debug
 
         # check that A is a square matrix
         Ashape = self.A.shape
@@ -24,139 +25,115 @@ class GmresSolver:
             maxiter = self.N
         else:
             maxiter = int(maxiter)
+            if maxiter > self.N:
+                maxiter = self.N
         self.maxiter = maxiter
 
-        # bshape = self.b.shape
-        # assert(len(bshape) == 2 and bshape[1] == 1)
+        bshape = self.b.shape
+        assert(len(bshape) == 2 and bshape[1] == 1)
 
         # initialize helper matricesm H,Q from Arnoldi
-        self.Q = np.zeros((self.N, maxiter))
+        self.Q = np.zeros((self.N, maxiter+1))
         self.H = np.zeros((maxiter + 1, maxiter))
 
         # xi unit vector and consecutive rotations
         self.xi = np.zeros((maxiter + 1, 1))
         self.xi[0] = 1.0
-        self.cosines = np.zeros((maxiter + 1))
-        self.sines = np.zeros((maxiter + 1))
+        self.cosines = np.zeros((maxiter))
+        self.sines = np.zeros((maxiter))
+
+        self._x = None
         return
 
-    def solve(self):
-        return self.solve2()
+    @property
+    def x(self):
+        return self._x
 
-    def _main_solve(self):
-        """solve the matrix with the desired GMRES algorithm"""
+    @property
+    def residual(self):
+        if self._x is None:
+            return None
+        else:
+            r = self.b - self.A @ self.x
+            return np.linalg.norm(r)
+
+    @classmethod
+    def solve(cls, A, b, tol=1e-10, maxiter=1e4,x0=None, debug=False): 
+        return cls(A,b,tol=tol, maxiter=maxiter,x0=x0,debug=debug).solve_system()
+        
+
+    def solve_system(self):
         x = self.x0
         r = self.b - self.A @ x
         beta = np.linalg.norm(r)
-        q0 = r / beta
-        self.Q[:, 0] = q0[:, 0]
+        q = r / beta
+        self.Q[:,0] = q[:,0]
 
+        # Arnoldi's iteration
         for k in range(self.maxiter):
-            print(f"starting iteration = {k}")
-            qnext = self.A @ self.Q[:, k]
+            qbar = self.A @ q
+            for i in range(k+1):
+                self.H[i,k] = qbar.T @ self.Q[:,i]
+            for i in range(k+1):
+                qbar[:,0] -= self.H[i,k] * self.Q[:,i]
+            self.H[k+1,k] = np.linalg.norm(qbar)
+            if abs(self.H[k+1,k]) < 1e-12:
+                q = 0 * qbar
+            else:
+                q = qbar/self.H[k+1,k]
+            self.Q[:,k+1] = q[:,0]
 
-            # apply Arnoldi's method to update Graham-Schmidt basis
-            for j in range(k + 1):
-                self.H[j, k] = np.dot(qnext, self.Q[:, j])
-                qnext -= self.H[j, k] * self.Q[:, j]
-            self.H[k + 1, k] = np.linalg.norm(qnext)
-            if self.H[k + 1, k] != 0 and k < self.maxiter - 1:
-                qnext /= self.H[k + 1, k]
-                self.Q[:, k + 1] = qnext
-
-            # apply previous rotations F_1,...,F_k to kth column of upper Heisenberg
+            # apply previous Gibben's rotations to H
             for i in range(k):
-                tempH = self.H[i, k]
-                self.H[i, k] = (
-                    self.cosines[i] * self.H[i, k] + self.sines[i] * self.H[i + 1, k]
-                )
-                self.H[i + 1, k] = (
-                    -self.sines[i] * tempH + self.cosines[i] * self.H[i + 1, k]
-                )
+                temp = self.H[i,k]; ci = self.cosines[i]; si = self.sines[i]
+                self.H[i,k] = ci * temp + si * self.H[i+1,k]
+                self.H[i+1,k] = -si * temp + ci * self.H[i+1,k]
 
-            # calculate entries in F_k or kth rotation matrix to eliminate k+1,k entry of H
-            self.cosines[k] = np.abs(self.H[k, k]) / np.sqrt(
-                self.H[k, k] ** 2 + self.H[k + 1, k] ** 2
-            )
-            self.sines[k] = self.cosines[k] * self.H[k + 1, k] / self.H[k, k]
+            # compute kth Gibben's rotation
+            self.cosines[k] = np.abs(self.H[k,k]) / np.sqrt(self.H[k,k]**2 + self.H[k+1,k]**2)
+            self.sines[k] = self.cosines[k] * self.H[k+1,k] / self.H[k,k]
 
-            # apply rotations to eliminate k+1,k entry so that upper Heisenberg
-            # matrix is k x k upper triangular matrix
-            self.H[k, k] = (
-                self.cosines[k] * self.H[k, k] + self.sines[k] * self.H[k + 1, k]
-            )
-            self.H[k + 1, k] = 0.0
+            # perform kth Gibben's rotation to H and xi
+            temp = self.H[k,k]; ck = self.cosines[k]; sk = self.sines[k]
+            self.H[k,k] = ck * temp + sk * self.H[k+1,k]
+            self.H[k+1,k] = -sk * temp + ck * self.H[k+1,k]
 
-            # apply rotations to the xi unit vector as well
-            xi_temp = self.xi[k]
-            self.xi[k] = self.cosines[k] * xi_temp
-            self.xi[k + 1] = -self.sines[k] * xi_temp
+            temp = self.xi[k,0]
+            self.xi[k,0] = ck * temp + sk * self.xi[k+1,0]
+            self.xi[k+1,0] = -sk * temp + ck * self.xi[k+1,0]
 
-            heisenberg_residual = float(beta * np.abs(self.xi[k + 1]))
-            if heisenberg_residual < self.tol:
+            if abs(beta*self.xi[k+1,0]) < self.tol:
                 break
 
-        # print final residual
-        print(f"number iterations = {k+1}")
-        print(f"heisenberg residual = {heisenberg_residual}")
+        if self.debug:
+            print(f"Q = {self.Q}")
+            print(f"H = {self.H}")
+            print(f"cosines = {self.cosines}")
+            print(f"sines = {self.sines}")
+            print(f"xi = {self.xi}")
 
-        # only once we've minimized residual on the upper Heisenberg do we then compute y and then x
-        Hk = self.H[: k + 1, : k + 1]
-        xik = self.xi[: k + 1]
-        Qk = self.Q[:, : k + 1]
+        # solve the upper triangular system
+        # RHS = beta*(F*xi)_kx1
+        by = beta * self.xi[:k+1,:]
 
-        # solve upper triangular matrix by backsubstitution
-        yk = np.zeros((k + 1, 1))
-        for row in range(k, -1, -1):
-            nright = k - row
-            numerator = xik[row]
-            for iright in range(nright):
-                numerator -= Hk[row, row + iright] * xik[row + iright]
-            yk[row, 0] = numerator / Hk[row, row]
+        # solve the upper triangular system
+        y = np.zeros((k+1,1))
+        for i in range(k,-1,-1):
+            nright = k-i
+            numerator = by[i,0]
+            for iright in range(1,nright+1):
+                numerator -= self.H[i,i+iright] * y[i+iright,0]
+            y[i,0] = numerator / self.H[i,i]
 
-        # check that it solves the upper Heisenberg matrix
-        heis_res = xik - Hk @ yk
-        print(f"heis solve = {np.linalg.norm(heis_res)}")
+        # check the upper triangular system was solved
+        if self.debug:
+            R = self.H[:k+1,:k+1]
+            upper_triangular_diff = R @ y - by
+            print(f"R = {R}")
+            print(f"by = {by}")
+            print(f"y = {y}")
+            print(f"upper triangular system check = {upper_triangular_diff}")
 
-        xk = self.x0 + Qk @ yk
-        return xk
-
-    def solve2(self):
-        A = self.A
-        x0 = np.reshape(self.x0, newshape=(self.N))
-        b = np.reshape(self.b, newshape=(self.N))
-        x = self._GMRes(A, b, x0, 0, self.maxiter)
-        return x[-1]
-
-    def _GMRes(self, A, b, x0, e, nmax_iter, restart=None):
-        r = b - np.asarray(np.dot(A, x0)).reshape(-1)
-
-        x = []
-        q = [0] * (nmax_iter)
-
-        x.append(r)
-
-        q[0] = r / np.linalg.norm(r)
-
-        h = np.zeros((nmax_iter + 1, nmax_iter))
-
-        # for k in range(min(nmax_iter, A.shape[0])):
-        for k in range(nmax_iter):
-            y = np.asarray(np.dot(A, q[k])).reshape(-1)
-
-            for j in range(k + 1):
-                h[j, k] = np.dot(q[j], y)
-                y = y - h[j, k] * q[j]
-            h[k + 1, k] = np.linalg.norm(y)
-            if h[k + 1, k] != 0 and k != nmax_iter - 1:
-                q[k + 1] = y / h[k + 1, k]
-
-            b = np.zeros(nmax_iter + 1)
-            b[0] = np.linalg.norm(r)
-
-            result = np.linalg.lstsq(h, b)[0]
-            # print(f"result = {result}")
-
-            x.append(np.dot(np.asarray(q).transpose(), result) + x0)
-
-        return x
+        # compute solution xk = x0 + Qk * yk
+        self._x = self.x0 + self.Q[:,:k+1] @ y      
+        return self
