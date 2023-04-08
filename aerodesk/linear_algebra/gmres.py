@@ -4,7 +4,10 @@ import numpy as np
 
 
 class GmresSolver:
-    """https://stackoverflow.com/questions/37962271/whats-wrong-with-my-gmres-implementation"""
+    """
+    Solves linear systems of the form Ax = b using the GMRES Algorithm
+    GMRES stands for Generalized Minimal Residual
+    """
 
     def __init__(self, A, b, maxiter=None, x0=None, tol=1e-10):
         self.A = A
@@ -23,7 +26,7 @@ class GmresSolver:
             maxiter = int(maxiter)
         self.maxiter = maxiter
 
-        bshape = self.b.shape
+        # bshape = self.b.shape
         # assert(len(bshape) == 2 and bshape[1] == 1)
 
         # initialize helper matricesm H,Q from Arnoldi
@@ -49,6 +52,7 @@ class GmresSolver:
         self.Q[:, 0] = q0[:, 0]
 
         for k in range(self.maxiter):
+            print(f"starting iteration = {k}")
             qnext = self.A @ self.Q[:, k]
 
             # apply Arnoldi's method to update Graham-Schmidt basis
@@ -60,7 +64,7 @@ class GmresSolver:
                 qnext /= self.H[k + 1, k]
                 self.Q[:, k + 1] = qnext
 
-            # apply previous rotations F_1,...,F_k-1 to kth column of upper Heisenberg
+            # apply previous rotations F_1,...,F_k to kth column of upper Heisenberg
             for i in range(k):
                 tempH = self.H[i, k]
                 self.H[i, k] = (
