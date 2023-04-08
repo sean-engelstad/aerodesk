@@ -16,6 +16,6 @@ setup(
     long_description_content_type="text/markdown",
     author="Sean P. Engelstad",
     author_email="sengeltad312@gatech.edu",
-    install_requires=["numpy", "mpi4py>=3.1.1", "scipy>=1.2.1"],
+    install_requires=["numpy", "scipy>=1.2.1"],
     packages=find_packages(include=["aerodesk*"]),
 )
