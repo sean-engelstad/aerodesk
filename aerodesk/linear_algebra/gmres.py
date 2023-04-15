@@ -19,20 +19,18 @@ class Gmres:
         self.debug = debug
         self.complex = complex
 
-        if self.complex:
-            self.x0 += 1j * 1e-5
-
         # check that A is a square matrix
         Ashape = self.A.shape
         assert Ashape[0] == Ashape[1]
         self.N = Ashape[0]
 
-        if maxiter is None:
-            maxiter = self.N
-        else:
-            maxiter = int(maxiter)
-            if maxiter > self.N:
-                maxiter = self.N
+        # if maxiter is None:
+        #     maxiter = self.N
+        # else:
+        #     maxiter = int(maxiter)
+        #     if maxiter > self.N:
+        #         maxiter = self.N
+        maxiter = int(maxiter)
         self.maxiter = maxiter
 
         bshape = self.b.shape
@@ -80,7 +78,7 @@ class Gmres:
             return np.linalg.norm(r)
 
     @classmethod
-    def solve(cls, A, b, tol=1e-10, maxiter=1e4, x0=None, debug=False, complex=False):
+    def solve(cls, A, b, tol=1e-10, maxiter=1e3, x0=None, debug=False, complex=False):
         return (
             cls(A, b, tol=tol, maxiter=maxiter, x0=x0, debug=debug, complex=complex)
             .jacobi_precondition()
@@ -98,7 +96,7 @@ class Gmres:
         for k in range(self.maxiter):
             qbar = self.A @ q
             for i in range(k + 1):
-                self.H[i, k] = qbar.T @ self.Q[:, i]
+                self.H[i, k] = np.conjugate(np.conjugate(qbar).T @ self.Q[:, i])
             for i in range(k + 1):
                 qbar[:, 0] -= self.H[i, k] * self.Q[:, i]
             self.H[k + 1, k] = np.linalg.norm(qbar)
@@ -114,7 +112,7 @@ class Gmres:
                 ci = self.cosines[i]
                 si = self.sines[i]
                 self.H[i, k] = ci * temp + si * self.H[i + 1, k]
-                self.H[i + 1, k] = -si * temp + ci * self.H[i + 1, k]
+                self.H[i + 1, k] = -np.conjugate(si) * temp + ci * self.H[i + 1, k]
 
             # compute kth Gibben's rotation
             d = self.H[k, k]
@@ -124,20 +122,22 @@ class Gmres:
                 self.sines[k] = 1.0
             else:
                 self.cosines[k] = np.abs(d) / np.sqrt(np.abs(d) ** 2 + np.abs(h) ** 2)
-                self.sines[k] = self.cosines[k] * h / d
+                conj_sine = self.cosines[k] * h / d
+                self.sines[k] = np.conjugate(conj_sine)
 
             # perform kth Gibben's rotation to H and xi
             temp = self.H[k, k]
             ck = self.cosines[k]
             sk = self.sines[k]
             self.H[k, k] = ck * temp + sk * self.H[k + 1, k]
-            self.H[k + 1, k] = -sk * temp + ck * self.H[k + 1, k]
+            self.H[k + 1, k] = -np.conjugate(sk) * temp + ck * self.H[k + 1, k]
 
             temp = self.xi[k, 0]
             self.xi[k, 0] = ck * temp + sk * self.xi[k + 1, 0]
-            self.xi[k + 1, 0] = -sk * temp + ck * self.xi[k + 1, 0]
+            self.xi[k + 1, 0] = -np.conjugate(sk) * temp + ck * self.xi[k + 1, 0]
 
-            if abs(beta * self.xi[k + 1, 0]) < self.tol:
+            rtol = np.abs(beta * self.xi[k + 1, 0])
+            if rtol < self.tol:
                 break
 
         if self.debug:
@@ -152,7 +152,7 @@ class Gmres:
         by = beta * self.xi[: k + 1, :]
 
         # solve the upper triangular system
-        y = np.zeros((k + 1, 1))
+        y = np.zeros((k + 1, 1), dtype=self.dtype)
         for i in range(k, -1, -1):
             nright = k - i
             numerator = by[i, 0]
