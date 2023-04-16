@@ -1,21 +1,14 @@
-__all__ = ["EulerBernoulliProblem", "EulerBernoulliBC"]
+__all__ = ["EulerBernoulliProblem"]
 
 import numpy as np
 from aerodesk.linear_algebra import Gmres
 from .analysis_function import Function
 
 
-class EulerBernoulliBC:
-    def __init__(self, kind):
-        self.kind = kind
-
-    @classmethod
-    def pin(cls):
-        pass
-
-
 class EulerBernoulliProblem:
-    def __init__(self, elements, bcs, loads, complex=False, rho=5.0):
+    SOLVERS = ["gmres", "numnpy"]
+
+    def __init__(self, elements, bcs, loads, complex=False, solver="gmres", rho=5.0):
         """solver for Euler Bernoulli beam problems"""
         self.elements = elements
         self.bcs = bcs
@@ -40,6 +33,8 @@ class EulerBernoulliProblem:
         self._constrained = False
 
         self._linear_solver = None
+
+        self._solver = solver
 
         # adjoint states
         self.KT = None
@@ -68,6 +63,10 @@ class EulerBernoulliProblem:
     @property
     def variables(self):
         return [elem.thickness_var for elem in self.elements]
+
+    @property
+    def var_names(self):
+        return [var.name for var in self.variables]
 
     def set_variables(self, xdict):
         """set variables into each element"""
@@ -98,6 +97,10 @@ class EulerBernoulliProblem:
 
     def assemble(self):
         """assembly of element stiffness and forces to global stiffness and force arrays"""
+        # zero out and reset the matrix
+        self.K[:, :] = 0.0
+        self.F[:, :] = 0.0
+
         for ielem, element in enumerate(self.elements):
             offset = 2 * ielem
 
@@ -136,11 +139,16 @@ class EulerBernoulliProblem:
         if not (self._constrained):
             self.apply_bcs()
 
-        self._linear_solver = Gmres.solve(
-            A=self.Kred, b=self.Fred, complex=self.complex
-        )
-        self.ured = self.linear_solver.x
-        print(f"Euler-Bernoulli forward solve residual = {self.linear_solver.residual}")
+        if self._solver == "gmres":
+            self._linear_solver = Gmres.solve(
+                A=self.Kred, b=self.Fred, complex=self.complex
+            )
+            self.ured = self.linear_solver.x
+            print(
+                f"Euler-Bernoulli forward solve residual = {self.linear_solver.residual}"
+            )
+        elif self._solver == "numpy":
+            self.ured = np.linalg.solve(self.Kred, self.Fred)
 
         # write reduced displacements back into full displacements
         self.u[self.reduced_dofs] = self.ured
@@ -152,23 +160,25 @@ class EulerBernoulliProblem:
     def solve_adjoint(self):
         """solve the adjoint system, using GMRES if solution is not evaluated elsewhere"""
         # transpose the reduced stiffness matrix
-        self.KT = np.transpose(self.Kred)
+        self.KT = np.transpose(self.K)
+        # bc rows get zeroed out and replaced with identity
+        for bc in self.bcs:
+            self.KT[bc, :] = 0.0
+            self.KT[bc, bc] = 1.0
 
         # adjoint RHS = -df/du, since only one output function for now
         self.adj_rhs = -self.dstress_du
 
-        # apply bcs
-        self.adj_rhs = self.adj_rhs[self.reduced_dofs]
-
-        self._adjoint_solver = Gmres.solve(
-            A=self.KT, b=self.adj_rhs, complex=self.complex
-        )
-        self.psi = self._adjoint_solver.x
-        self.psi_global[self.reduced_dofs] = self.psi
-
-        print(
-            f"Euler-Bernoulli adjoint solve residual = {self._adjoint_solver.residual}"
-        )
+        if self._solver == "gmres":
+            self._adjoint_solver = Gmres.solve(
+                A=self.KT, b=self.adj_rhs, complex=self.complex
+            )
+            self.psi = self._adjoint_solver.x
+            print(
+                f"Euler-Bernoulli adjoint solve residual = {self._adjoint_solver.residual}"
+            )
+        elif self._solver == "numpy":
+            self.psi = np.linalg.solve(self.KT, self.adj_rhs)
         return
 
     @property
@@ -204,7 +214,8 @@ class EulerBernoulliProblem:
             inner_sum += np.exp(self.rho * elem.stress)
         for ielem, elem in enumerate(self.elements):
             dks_dstress = np.exp(self.rho * elem.stress) / inner_sum
-            gradient[2 * ielem : 2 * ielem + 4, 0] = dks_dstress * elem.dstress_du
+            offset = 2 * ielem
+            gradient[offset : offset + 4, 0] += dks_dstress * elem.dstress_du
         return gradient
 
     @property
@@ -213,19 +224,11 @@ class EulerBernoulliProblem:
         gradient = {}
         for ielem, elem in enumerate(self.elements):
             var = elem.thickness_var
+            dKdhu_global = np.zeros((self.ndof, 1), dtype=self.dtype)
             dKdh_u = elem.dKdh @ elem.u
-            psi_elem = self.psi_global[2 * ielem : 2 * ielem + 4, 0]
-
-            # apply any boundary conditions if need be
             offset = 2 * ielem
-            local_dof = []
-            for i in range(offset, offset + 4):
-                if not (i in self.bcs):
-                    local_dof.append(i - offset)
-            dKdh_u = dKdh_u[local_dof, 0]
-            psi_elem = psi_elem[local_dof]
-            # put an extra / 2 here, don't know why this works
-            gradient[var.name] = dKdh_u.T @ psi_elem / 2.0
+            dKdhu_global[offset : offset + 4, :] = dKdh_u
+            gradient[var.name] = dKdhu_global.T @ self.psi
         return gradient
 
     @property
@@ -259,6 +262,10 @@ class EulerBernoulliProblem:
     @property
     def reduced_dofs(self):
         return [_ for _ in self.full_dofs if not (_ in self.bcs)]
+
+    @property
+    def nred_dof(self):
+        return len(self.reduced_dofs)
 
     @property
     def linear_solver(self):

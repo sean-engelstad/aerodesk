@@ -119,6 +119,19 @@ class EulerBernoulliElement:
         )
 
     @property
+    def thickness(self):
+        return self.thickness_var.value
+
+    @thickness.setter
+    def thickness(self, new_thickness):
+        self.thickness_var.value = new_thickness
+        return
+
+    @property
+    def name(self):
+        return self.thickness_var.name
+
+    @property
     def mass(self):
         """mass of the element"""
         return self.material.rho * self.thickness_var.area * self.length
