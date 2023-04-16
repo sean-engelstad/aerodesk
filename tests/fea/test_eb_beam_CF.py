@@ -10,7 +10,7 @@ np.random.seed(1234567)
 debug = True
 
 
-class EulerBernoulliCantilever(unittest.TestCase):
+class EulerBernoulliCantileverClosedForm(unittest.TestCase):
     def test_tip_load_closed_form(self):
         L = 2
         P = 1000
@@ -78,40 +78,6 @@ class EulerBernoulliCantilever(unittest.TestCase):
         print(f"rel error = {rel_error}\n")
         self.assertTrue(abs(rel_error) < 1e-9)
         return
-
-    @unittest.skip("debugging still")
-    def test_adjoint_mid_load(self):
-        L = 2
-        P1 = 1000 * np.random.rand()
-        # can tack on P2 at tip load since already verified (but is optional due to superposition)
-        P2 = 1200 * np.random.rand()
-
-        # construct an elementf
-        aluminum = Isotropic.test_material()
-        thick_var1 = ThicknessVariable(name="elem1", base=1.0, thickness=0.1)
-        thick_var2 = ThicknessVariable(name="elem2", base=1.0, thickness=0.1)
-
-        element1 = EulerBernoulliElement(aluminum, thick_var1, x=[0, L / 2])
-        element2 = EulerBernoulliElement(aluminum, thick_var2, x=[L / 2, L])
-
-        eb_problem = EulerBernoulliProblem(
-            [element1, element2], bcs=[0, 1], loads=[0, 0, P1, 0, P2, 0]
-        )
-
-        """perform complex step over mass and stress functions"""
-        # adjoint method
-        eb_problem.solve_forward()
-        eb_problem.solve_adjoint()
-
-        # complex-step method
-        # does my GMRES solver work with complex numbers
-
-        pass
-        print("\nTip and Mid Load adjoint test...")
-        print(f"w FEA = {w_FEA}")
-        print(f"w closed-form = {w_CF}")
-        print(f"rel error = {rel_error}\n")
-        self.assertTrue(abs(rel_error) < 1e-9)
 
 
 if __name__ == "__main__":

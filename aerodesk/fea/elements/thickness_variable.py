@@ -51,7 +51,7 @@ class ThicknessVariable:
     @property
     def dIdh(self):
         return self.inertia_shape_factor * ThicknessVariable.dinertia_dh(
-            self.base, self.thickness
+            base=self.base, height=self.thickness
         )
 
     @property
@@ -61,3 +61,13 @@ class ThicknessVariable:
     @property
     def dAdh(self):
         return self.base * self.area_factor
+
+    @classmethod
+    def test_inertia_jacobian(cls, base, height):
+        deriv = cls.dinertia_dh(base, height)
+        import numpy as np
+
+        h = 1e-30
+        dIds = np.imag(cls.calculate_inertia(base, height + 1j * h)) / h
+        rel_error = (deriv - dIds) / dIds
+        return rel_error

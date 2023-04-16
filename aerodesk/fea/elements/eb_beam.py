@@ -4,7 +4,9 @@ import numpy as np
 
 
 class EulerBernoulliElement:
-    def __init__(self, material, x=None, thickness_var=None, q0=0.0, k=0.0):
+    def __init__(
+        self, material, thickness_var=None, x=None, q0=0.0, k=0.0, complex=False
+    ):
         """
         class to solve Euler Bernoulli beam problems with FEA
 
@@ -20,6 +22,8 @@ class EulerBernoulliElement:
             distributed transverse load on this element
         k : float
             elastic foundation modulus, often 0.0
+        complex : bool
+            whether to be in complex mode or not
         """
         assert isinstance(x, list) and len(x) == 2
         self.material = material
@@ -29,9 +33,17 @@ class EulerBernoulliElement:
         self.k = k
         self.he = x[1] - x[0]
         self.Q = None  # list of 4 Q1e, Q2e, Q3e, Q4e
+        self.complex = complex
 
         self._variable = None
-        self.u = np.zeros((4, 1))
+        self.u = np.zeros((4, 1), dtype=self.dtype)
+
+    @property
+    def dtype(self):
+        if self.complex:
+            return complex
+        else:
+            return float
 
     @property
     def length(self):
@@ -53,7 +65,8 @@ class EulerBernoulliElement:
                 [Q2],
                 [Q3],
                 [Q4],
-            ]
+            ],
+            dtype=self.dtype,
         )
         if q0 is not None:
             self.q0 = q0
@@ -73,14 +86,16 @@ class EulerBernoulliElement:
                 [-3 * he, 2 * he**2, 3 * he, he**2],
                 [-6, 3 * he, 6, 3 * he],
                 [-3 * he, he**2, 3 * he, 2 * he**2],
-            ]
+            ],
+            dtype=self.dtype,
         ) + self.k * he / 420 * np.array(
             [
                 [156, -22 * he, 54, 13 * he],
                 [-22 * he, 4 * he**2, -13 * he, -3 * he**2],
                 [54, -13 * he, 156, 22 * he],
                 [13 * he, -3 * he**2, 22 * he, 4 * he**2],
-            ]
+            ],
+            dtype=self.dtype,
         )
 
     @property
@@ -98,7 +113,8 @@ class EulerBernoulliElement:
                     [-3 * he, 2 * he**2, 3 * he, he**2],
                     [-6, 3 * he, 6, 3 * he],
                     [-3 * he, he**2, 3 * he, 2 * he**2],
-                ]
+                ],
+                dtype=self.dtype,
             )
         )
 
@@ -121,27 +137,26 @@ class EulerBernoulliElement:
     def strain(self):
         """strain of the element"""
         # get every other entry for linear displacements, not rotational
-        ulinear = self.u[0::2, 0]
-        return np.diff(ulinear) / self.length
+        return (self.u[2, 0] - self.u[0, 0]) / self.length
 
     @property
     def dstrain_du(self):
         """d(strain)/d(displacement) partials"""
-        return np.array([-1.0, 1.0]) / self.length
+        return np.array([-1.0, 0.0, 1.0, 0.0], dtype=self.dtype) / self.length
 
     @property
     def stress(self):
         """stress of the element"""
-        return self.material.E * self.strain
+        return self.material.E * self.strain / self.material.ultimate_stress
 
     @property
     def dstress_du(self):
         """d(stress)/d(displacement) partials"""
-        return self.material.E * self.dstrain_du
+        return self.material.E * self.dstrain_du / self.material.ultimate_stress
 
     @property
     def force_vector(self):
         """element force vector f_e = q_e + Q_e including distributed and end loads"""
-        Qvec = np.zeros((4, 1)) if self.Q is None else self.Q
-        q0vec = np.array([[6], [-self.he], [6], [self.he]])
+        Qvec = np.zeros((4, 1), dtype=self.dtype) if self.Q is None else self.Q
+        q0vec = np.array([[6], [-self.he], [6], [self.he]], dtype=self.dtype)
         return self.q0 * self.he / 12.0 * q0vec + Qvec

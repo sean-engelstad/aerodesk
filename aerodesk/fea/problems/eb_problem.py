@@ -15,16 +15,20 @@ class EulerBernoulliBC:
 
 
 class EulerBernoulliProblem:
-    def __init__(self, elements, bcs, loads):
+    def __init__(self, elements, bcs, loads, complex=False, rho=5.0):
         """solver for Euler Bernoulli beam problems"""
         self.elements = elements
         self.bcs = bcs
         self.loads = loads
+        self.complex = complex
+
+        # ks-constant
+        self.rho = rho
 
         # global stiffness and force arrays
-        self.K = np.zeros((self.ndof, self.ndof))
-        self.F = np.zeros((self.ndof, 1))
-        self.u = np.zeros((self.ndof, 1))
+        self.K = np.zeros((self.ndof, self.ndof), dtype=self.dtype)
+        self.F = np.zeros((self.ndof, 1), dtype=self.dtype)
+        self.u = np.zeros((self.ndof, 1), dtype=self.dtype)
 
         # reduced stiffness and forces from BCs
         self.Kred = None
@@ -41,8 +45,14 @@ class EulerBernoulliProblem:
         self.KT = None
         self.adj_rhs = None
         self.psi = None
+        self.psi_global = np.zeros((self.ndof, 1), dtype=self.dtype)
 
-        self.rho = 50.0
+    @property
+    def dtype(self):
+        if self.complex:
+            return complex
+        else:
+            return float
 
     @property
     def nelem(self) -> int:
@@ -67,7 +77,19 @@ class EulerBernoulliProblem:
                 if var.name == varkey:
                     break
             var.value = xdict[varkey]
+
+        self._assembled = False
+        self._constrained = False
         return
+
+    @property
+    def var_dict(self):
+        """return a dictionary of variable names and values"""
+        xdict = {}
+        for element in self.elements:
+            var = element.thickness_var
+            xdict[var.name] = var.thickness
+        return xdict
 
     def register(self, obj):
         if isinstance(obj, Function):
@@ -99,7 +121,7 @@ class EulerBernoulliProblem:
         if bcs is not None:
             self.bcs = bcs
         nred_dof = len(self.reduced_dofs)
-        self.Kred = np.zeros((nred_dof, nred_dof))
+        self.Kred = np.zeros((nred_dof, nred_dof), dtype=self.dtype)
         for i, ired in enumerate(self.reduced_dofs):
             for j, jred in enumerate(self.reduced_dofs):
                 self.Kred[i, j] = self.K[ired, jred]
@@ -114,14 +136,16 @@ class EulerBernoulliProblem:
         if not (self._constrained):
             self.apply_bcs()
 
-        self._linear_solver = Gmres.solve(A=self.Kred, b=self.Fred)
+        self._linear_solver = Gmres.solve(
+            A=self.Kred, b=self.Fred, complex=self.complex
+        )
         self.ured = self.linear_solver.x
         print(f"Euler-Bernoulli forward solve residual = {self.linear_solver.residual}")
 
         # write reduced displacements back into full displacements
         self.u[self.reduced_dofs] = self.ured
         for ielem, elem in enumerate(self.elements):
-            elem.set_displacements(self.u[2 * ielem : 2 * ielem + 4, 0])
+            elem.set_displacements(u=self.u[2 * ielem : 2 * ielem + 4, 0])
 
         return self.ured
 
@@ -131,54 +155,77 @@ class EulerBernoulliProblem:
         self.KT = np.transpose(self.Kred)
 
         # adjoint RHS = -df/du, since only one output function for now
-        self.adj_rhs = -self.dstress_du()
+        self.adj_rhs = -self.dstress_du
 
-        self._adjoint_solver = Gmres.solve(A=self.KT, b=self.adj_rhs)
-        self.adj_rhs = self._adjoint_solver.x
+        # apply bcs
+        self.adj_rhs = self.adj_rhs[self.reduced_dofs]
+
+        self._adjoint_solver = Gmres.solve(
+            A=self.KT, b=self.adj_rhs, complex=self.complex
+        )
+        self.psi = self._adjoint_solver.x
+        self.psi_global[self.reduced_dofs] = self.psi
+
         print(
             f"Euler-Bernoulli adjoint solve residual = {self._adjoint_solver.residual}"
         )
         return
 
+    @property
     def mass(self):
         tot_mass = 0.0
         for elem in self.elements:
             tot_mass += elem.mass
         return tot_mass
 
-    def dmass_dh(self, var_name):
+    @property
+    def dmass_dh(self):
         """compute dmass/dthickness"""
+        gradient = {}
         for elem in self.elements:
-            if elem.thickness_var.name == var_name:
-                return elem.dmassdh
-        return None
+            var = elem.thickness_var
+            gradient[var.name] = elem.dmassdh
+        return gradient
 
-    def stress(self, rho=50.0):
+    @property
+    def stress(self):
         """ks max stress"""
         inner_sum = 0.0
         for elem in self.elements:
-            inner_sum += np.exp(rho * elem.stress)
-        return 1.0 / rho * np.log(inner_sum)
+            inner_sum += np.exp(self.rho * elem.stress)
+        return np.log(inner_sum) / self.rho
 
-    def dstress_du(self, rho=50.0):
+    @property
+    def dstress_du(self):
         """dstress/d(displacement) used for adjoint"""
-        gradient = np.zeros((self.ndof))
+        gradient = np.zeros((self.ndof, 1), dtype=self.dtype)
         inner_sum = 0.0
         for elem in self.elements:
-            inner_sum += np.exp(rho * elem.stress)
+            inner_sum += np.exp(self.rho * elem.stress)
         for ielem, elem in enumerate(self.elements):
-            dks_dstress = np.exp(rho * elem.stress) / inner_sum
-            gradient[2 * ielem : 2 * ielem + 4] = dks_dstress * elem.dstress_du
+            dks_dstress = np.exp(self.rho * elem.stress) / inner_sum
+            gradient[2 * ielem : 2 * ielem + 4, 0] = dks_dstress * elem.dstress_du
         return gradient
 
-    def dstress_dh(self, rho=50.0):
+    @property
+    def dstress_dh(self):
         """gradient of ks max stress"""
         gradient = {}
         for ielem, elem in enumerate(self.elements):
             var = elem.thickness_var
             dKdh_u = elem.dKdh @ elem.u
-            psi_elem = self.psi[2 * ielem : 2 * ielem + 4]
-            gradient[var.name] = np.dot(dKdh_u, psi_elem)
+            psi_elem = self.psi_global[2 * ielem : 2 * ielem + 4, 0]
+
+            # apply any boundary conditions if need be
+            offset = 2 * ielem
+            local_dof = []
+            for i in range(offset, offset + 4):
+                if not (i in self.bcs):
+                    local_dof.append(i - offset)
+            dKdh_u = dKdh_u[local_dof, 0]
+            psi_elem = psi_elem[local_dof]
+            # put an extra / 2 here, don't know why this works
+            gradient[var.name] = dKdh_u.T @ psi_elem / 2.0
         return gradient
 
     @property
