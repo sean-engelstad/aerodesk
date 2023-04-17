@@ -1,6 +1,6 @@
 __all__ = ["EulerBernoulliProblem"]
 
-import numpy as np
+import numpy as np, os
 from aerodesk.linear_algebra import Gmres
 from .analysis_function import Function
 
@@ -8,7 +8,9 @@ from .analysis_function import Function
 class EulerBernoulliProblem:
     SOLVERS = ["gmres", "numnpy"]
 
-    def __init__(self, elements, bcs, loads, complex=False, solver="gmres", rho=5.0):
+    def __init__(
+        self, elements, bcs, loads, complex=False, solver="gmres", rho=5.0, path=None
+    ):
         """solver for Euler Bernoulli beam problems"""
         self.elements = elements
         self.bcs = bcs
@@ -33,14 +35,12 @@ class EulerBernoulliProblem:
         self._constrained = False
 
         self._linear_solver = None
-
         self._solver = solver
 
         # adjoint states
         self.KT = None
         self.adj_rhs = None
         self.psi = None
-        self.psi_global = np.zeros((self.ndof, 1), dtype=self.dtype)
 
     @property
     def dtype(self):
@@ -274,3 +274,68 @@ class EulerBernoulliProblem:
     @property
     def residual(self) -> float:
         return self.linear_solver.residual
+
+    def write_vtk(self, path=None, prefix="eb_beam", index=0):
+        """write a vtk file for the beam"""
+        nnodes = self.nelem + 1
+        npoints = 2 * nnodes
+
+        if path is None:
+            path = os.getcwd()
+
+        filename = f"{prefix}_{index}.vtk"
+        filepath = os.path.join(path, filename)
+        hdl = open(filepath, "w")
+        hdl.write(f"# vtk DataFile Version 2.0\n")
+        hdl.write(f"Euler Bernoulli Beam\n")
+        hdl.write(f"ASCII\n")
+        hdl.write(f"DATASET UNSTRUCTURED_GRID\n")
+        hdl.write(f"POINTS {npoints} double64\n")
+
+        # write all the point coordinates
+        # write initial two points on left of first element
+        elements = self.elements
+        elem0 = elements[0]
+        xleft = float(elem0.x[0])
+        h = float(elem0.thickness)
+        hdl.write(f"{xleft} {h/2.0} 0.0\n")
+        hdl.write(f"{xleft} {-h/2.0} 0.0\n")
+
+        # loop over remaining points, right side of each element
+        for elem in self.elements:
+            xright = float(elem.x[1])
+            h = float(elem.thickness)
+            hdl.write(f"{xright} {h/2.0} 0.0\n")
+            hdl.write(f"{xright} {-h/2.0} 0.0\n")
+
+        # write out each of the cells
+        ncells = self.nelem
+        hdl.write(f"CELLS {ncells} {5*ncells}\n")
+        for ielem in range(self.nelem):
+            # {x},{y}pt L or right each
+            BLpt = 2 * ielem
+            BRpt = 2 * ielem + 2
+            URpt = 2 * ielem + 3
+            ULpt = 2 * ielem + 1
+            hdl.write(f"4 {BLpt} {BRpt} {URpt} {ULpt}\n")
+
+        # write out cell types
+        hdl.write(f"CELL_TYPES {ncells}\n")
+        for ielem in range(self.nelem):
+            hdl.write("9\n")
+
+        # vector data u,v,w displacements
+        # plotting v here, theory is w, and we say u in the above code
+        hdl.write(f"POINT_DATA {npoints}\n")
+        hdl.write(f"VECTORS DISP double64\n")
+        # left node of first element
+        v = float(self.u[0].real)
+        hdl.write(f"0.0 {v} 0.0\n")
+        hdl.write(f"0.0 {v} 0.0\n")
+        for ielem, elem in enumerate(self.elements):
+            v = float(elem.u[2].real)
+            hdl.write(f"0.0 {v} 0.0\n")
+            hdl.write(f"0.0 {v} 0.0\n")
+
+        hdl.close()
+        return
