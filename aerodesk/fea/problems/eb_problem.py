@@ -9,13 +9,14 @@ class EulerBernoulliProblem:
     SOLVERS = ["gmres", "numnpy"]
 
     def __init__(
-        self, elements, bcs, loads, complex=False, solver="gmres", rho=5.0, path=None
+        self, elements, bcs, loads, complex=False, solver="gmres", rho=5.0, tol=1e-14
     ):
         """solver for Euler Bernoulli beam problems"""
         self.elements = elements
         self.bcs = bcs
         self.loads = loads
         self.complex = complex
+        self.tol = tol
 
         # ks-constant
         self.rho = rho
@@ -141,7 +142,7 @@ class EulerBernoulliProblem:
 
         if self._solver == "gmres":
             self._linear_solver = Gmres.solve(
-                A=self.Kred, b=self.Fred, complex=self.complex
+                A=self.Kred, b=self.Fred, complex=self.complex, tol=self.tol
             )
             self.ured = self.linear_solver.x
             print(
@@ -171,7 +172,7 @@ class EulerBernoulliProblem:
 
         if self._solver == "gmres":
             self._adjoint_solver = Gmres.solve(
-                A=self.KT, b=self.adj_rhs, complex=self.complex
+                A=self.KT, b=self.adj_rhs, complex=self.complex, tol=self.tol
             )
             self.psi = self._adjoint_solver.x
             print(

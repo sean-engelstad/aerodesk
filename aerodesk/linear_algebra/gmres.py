@@ -63,6 +63,7 @@ class Gmres:
         Dinv = np.diag(inv_diagonal)
         self.A = Dinv @ self.A
         self.b = Dinv @ self.b
+        # f_diagonal = np.diag(self.A)
         return self
 
     @property

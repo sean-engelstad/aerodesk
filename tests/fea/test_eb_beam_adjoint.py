@@ -9,6 +9,9 @@ from aerodesk.fea import (
 np.random.seed(1234567)
 debug = True
 
+# solver = "gmres"
+solver = "numpy"
+
 
 class EulerBernoulliCantileverAdjoint(unittest.TestCase):
     def test_adjoint_mid_load(self):
@@ -39,7 +42,7 @@ class EulerBernoulliCantileverAdjoint(unittest.TestCase):
                 loads += [0, 0]
 
         eb_problem = EulerBernoulliProblem(
-            elements, bcs=[0, 1], loads=loads, complex=True, solver="numpy"
+            elements, bcs=[0, 1], loads=loads, complex=True, solver=solver, tol=1e-20
         )
 
         """perform complex step over mass and stress functions"""
@@ -50,6 +53,8 @@ class EulerBernoulliCantileverAdjoint(unittest.TestCase):
         # adjoint method
         eb_problem.solve_forward()
         eb_problem.solve_adjoint()
+
+        # print(f"eb_problem K = {eb_problem.K}", flush=True)
 
         dmass_ds_adj = 0.0
         dstress_ds_adj = 0.0
