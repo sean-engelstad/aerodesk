@@ -1,0 +1,30 @@
+
+# location of aerodesk
+AD_DIR=${HOME}/git/aerodesk
+
+# compilers and other executables
+CXX = mpicxx
+CYTHON = CYTHON
+MAKE = make
+PIP = pip
+RM = rm -f
+
+# compiler flags
+CXXFLAGS=-fPIC -O3 -Wall -Wpedantic
+CXXFLAGS_DEBUG=-fPIC -g -Wall -Wpedantic
+
+# linux systems
+SO_EXT = so
+SO_LINK_FLAGS=-fPIC -shared
+
+# For MAC OS X systems
+#SO_EXT = so
+#SO_LINK_FLAGS=-fPIC -dynamiclib -single_module -undefined dynamic_lookup -multiply_defined suppress
+
+# Include, lib, ld flags
+AD_INCLUDE = -I${AD_DIR}/include
+AD_LIB = ${AD_DIR}/lib/libaerodesk.a
+AD_LD_FLAGS = -L${AD_DIR}/lib/ -Wl,-rpath,${AD_DIR}/lib -laerodesk
+
+AR = ar
+AR_FLAGS = rcs
