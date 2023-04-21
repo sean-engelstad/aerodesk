@@ -52,9 +52,9 @@ class Gmres:
     @property
     def dtype(self):
         if self.complex:
-            return complex
+            return np.longcomplex
         else:
-            return float
+            return np.longdouble
 
     def jacobi_precondition(self):
         # extract the diagonal of the matrix

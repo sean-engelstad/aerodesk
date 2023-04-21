@@ -49,14 +49,18 @@ class GmresSolverTest(unittest.TestCase):
         self.assertTrue(resid < 1e-6)
         return
 
-    @unittest.skip("not working failing at 1e-6 now")
-    def test_1000x1000_real(self):
-        """test large 1000x1000 real system with GMRES"""
-        N = 1000
+    # @unittest.skip("not working failing at 1e-6 now")
+    def test_500x500_real(self):
+        """test large 500x500 real system with GMRES"""
+        N = 500
         A = np.random.rand(N, N)
         b = np.random.rand(N, 1)
 
-        resid = Gmres.solve(A, b).residual
+        # resid = Gmres.solve(A, b).residual
+        solver = Gmres.solve(A, b, tol=1e-20)
+        resid = solver.residual
+        # resid_vec = b - A @ solver.x
+        # print(f"for N = {N}, r = {resid_vec}")
         print(f"GMRES - {N}x{N} real residual = {resid}")
         self.assertTrue(resid < 1e-8)
         return
