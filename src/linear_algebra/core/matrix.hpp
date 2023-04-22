@@ -3,7 +3,6 @@
 
 #include "scalar.hpp"
 #include <iostream>
-#include <time.h>
 
 class Matrix
 {
@@ -12,17 +11,22 @@ public:
     {
         // initialize the matrix storage
         M = new ADScalar[rows_ * cols_];
+        // initialize every entry to zero
+        for (int i = 0; i < getNumEntries(); i++) {
+            M[i] = 0.0;
+        }
     }
     int getNumEntries();
-    ADScalar getEntry(int, int);
-    ADScalar *getRow(int);
+    ADScalar getEntry(int irow, int icol);
+    ADScalar *getRow(int irow);
     void setEntry(int irow, int icol, ADScalar value);
     void randomInitialize(ADScalar scale = 1.0);
-    Matrix operator*(Matrix right);
-    Matrix operator+(Matrix right);
+    Matrix operator+(Matrix& right);
+    Matrix operator-(Matrix& right);
+    Matrix operator*(Matrix& right);
     void printEntries(int cap = 20);
 
-private:
+protected:
     int rows,
         cols;
     // pointer to the matrix

@@ -8,9 +8,11 @@ typedef double ADReal;
 typedef std::complex<double> ADComplex;
 
 // define the switch for complex versus real scalars
-#ifdef AERODESK_USE_COMPLEX
+#ifdef AD_USE_COMPLEX
+#pragma message "Compiled in complex"
 typedef ADComplex ADScalar;
 #else
+#pragma message "Compiled in real"
 typedef ADReal ADScalar;
 #endif
 
