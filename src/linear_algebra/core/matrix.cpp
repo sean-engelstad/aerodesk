@@ -1,6 +1,17 @@
 
 #include "matrix.hpp"
 
+Matrix::Matrix(Matrix& copy) {
+    rows = copy.rows;
+    cols = copy.cols;
+    initialize();
+    for (int i = 0; i < getNumEntries(); i++) {
+        M[i] = copy.M[i];
+    }
+}
+
+Matrix::Matrix() {}
+
 int Matrix::getNumEntries()
 {
     return rows * cols;

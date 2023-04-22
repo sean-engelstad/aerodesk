@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "gmres.hpp"
 #include <iostream>
 #include <complex>
 using namespace std;
@@ -16,15 +17,14 @@ int main(int argc, char *argv[])
             A.setEntry(i,j,2*i+j);
         }
     }
-    std::cout << "Matrix A ::" << endl;
-    A.printEntries();
-    std::cout << "Vector b ::" << endl;
-    b.printEntries();
-    Matrix C{A*b};
-    std::cout << "Matrix C = A*b ::" << endl;
-    C.printEntries();
+    // std::cout << "Matrix A ::" << endl;
+    // A.printEntries();
+    // std::cout << "Vector b ::" << endl;
+    // b.printEntries();
+    // Matrix C{A*b};
+    // std::cout << "Matrix C = A*b ::" << endl;
+    // C.printEntries();
 
-    // test complex number print out
-    complex z{1,2};
-    std::cout << "b = " << z << endl;
+    Gmres solver{A,b,100,1.0e-10};
+    solver.printMatrices();
 }

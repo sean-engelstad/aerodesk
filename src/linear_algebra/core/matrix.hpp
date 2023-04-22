@@ -7,16 +7,19 @@
 class Matrix
 {
 public:
-    Matrix(int rows_, int cols_) : rows{rows_}, cols{cols_}
-    {
+    Matrix();
+    Matrix(int rows_, int cols_) : rows{rows_}, cols{cols_} {initialize();}
+    Matrix(Matrix& copy);
+    void initialize() {
         // initialize the matrix storage
-        M = new ADScalar[rows_ * cols_];
+        M = new ADScalar[rows * cols];
         // initialize every entry to zero
         for (int i = 0; i < getNumEntries(); i++) {
             M[i] = 0.0;
-        }
-    }
+        }};
     int getNumEntries();
+    int getNumRows() {return rows;};
+    int getNumCols() {return cols;};
     ADScalar getEntry(int irow, int icol);
     ADScalar *getRow(int irow);
     void setEntry(int irow, int icol, ADScalar value);
